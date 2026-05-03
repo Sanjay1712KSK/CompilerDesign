@@ -383,9 +383,38 @@ function OptimizationPanel({ optimization }) {
   return (
     <div className="flex h-full flex-col gap-4">
       <PanelTitle title="Optimization" subtitle="Constant folding and simple dead temporary elimination." />
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-md border border-cyan-300/25 bg-cyan-300/10 px-3 py-2">
+          <div className="text-xs uppercase tracking-[0.16em] text-cyan-200">Iterations</div>
+          <div className="mt-1 text-lg font-semibold text-white">{optimization.iterations ?? 1}</div>
+        </div>
+        <div className="rounded-md border border-emerald-300/25 bg-emerald-300/10 px-3 py-2">
+          <div className="text-xs uppercase tracking-[0.16em] text-emerald-200">Changes</div>
+          <div className="mt-1 text-lg font-semibold text-white">{optimization.events?.length ?? 0}</div>
+        </div>
+        <div className="rounded-md border border-fuchsia-300/25 bg-fuchsia-300/10 px-3 py-2">
+          <div className="text-xs uppercase tracking-[0.16em] text-fuchsia-200">CFG Blocks</div>
+          <div className="mt-1 text-lg font-semibold text-white">{optimization.cfg?.length ?? 0}</div>
+        </div>
+      </div>
       <div className="grid min-h-0 flex-1 gap-4 md:grid-cols-2">
         <CodePanel title="Before" lines={optimization.before} compact accent="rose" />
         <CodePanel title="After" lines={optimization.after} compact accent="emerald" />
+      </div>
+      <div className="thin-scrollbar max-h-40 overflow-auto rounded-lg border border-slate-700/70 bg-slate-950/45 p-3">
+        <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Optimization Log</h3>
+        <div className="mt-3 space-y-2">
+          {(optimization.events ?? []).length ? optimization.events.map((item, index) => (
+            <div key={`${item.pass}-${index}`} className="rounded border border-slate-800 bg-slate-900/60 p-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded border border-cyan-300/25 bg-cyan-300/10 px-2 py-0.5 font-medium text-cyan-100">{item.pass}</span>
+                <span className="text-slate-400">line {item.line}</span>
+              </div>
+              <div className="mt-1 font-mono text-slate-300">{item.before} =&gt; {item.after}</div>
+              <div className="mt-1 text-slate-500">{item.detail}</div>
+            </div>
+          )) : <p className="text-sm text-slate-500">No optimization opportunities found.</p>}
+        </div>
       </div>
     </div>
   );

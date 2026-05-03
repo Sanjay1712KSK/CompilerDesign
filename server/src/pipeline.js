@@ -1,5 +1,6 @@
 import Parser from "tree-sitter";
 import C from "tree-sitter-c";
+import { optimizeTac } from "./optimizer.js";
 
 const parser = new Parser();
 parser.setLanguage(C);
@@ -312,6 +313,15 @@ function generateTac(root, code) {
       const left = node.childForFieldName?.("left") ?? node.namedChild(0);
       const right = node.childForFieldName?.("right") ?? node.namedChild(1);
       out.push(`${nodeText(left, code)} = ${emitExpression(right)}`);
+      return;
+    }
+
+    if (node.type === "expression_statement") {
+      const expression = node.namedChild(0);
+      if (expression?.type === "call_expression") {
+        emitExpression(expression);
+        return;
+      }
     }
 
     if (node.type === "if_statement") {
@@ -329,28 +339,44 @@ function generateTac(root, code) {
       return;
     }
 
+    if (node.type === "while_statement") {
+      const condition = node.childForFieldName?.("condition") ?? childByType(node, "parenthesized_expression");
+      const body = node.childForFieldName?.("body");
+      const startLabel = nextLabel("WHILE");
+      const endLabel = nextLabel("ENDWHILE");
+      out.push(`${startLabel}:`);
+      out.push(`ifFalse ${emitExpression(condition?.namedChild(0) ?? condition)} goto ${endLabel}`);
+      if (body) visit(body);
+      out.push(`goto ${startLabel}`);
+      out.push(`${endLabel}:`);
+      return;
+    }
+
     if (node.type === "switch_statement") {
       const condition = node.childForFieldName?.("condition") ?? childByType(node, "parenthesized_expression");
       const switchTemp = emitExpression(condition?.namedChild(0) ?? condition);
       const endLabel = nextLabel("ENDSW");
       const defaultLabel = nextLabel("DEFAULT");
-      const cases = [
-        ...findDescendants(node, "case_statement").map((caseNode) => {
-          const caseValue = caseNode.namedChild(0) ? nodeText(caseNode.namedChild(0), code) : "default";
+      const cases = findDescendants(node, "case_statement").flatMap((caseNode) => {
+          if (nodeText(caseNode, code).trim().startsWith("default")) {
+            return {
+              node: caseNode,
+              value: "default",
+              label: defaultLabel,
+              bodyStart: 0
+            };
+          }
+          const valueNode = caseNode.childForFieldName?.("value") ?? caseNode.namedChildren.find((child) => isExpressionNode(child));
+          if (!valueNode) return [];
+          const caseValue = nodeText(valueNode, code);
+          const bodyStart = Math.max(1, caseNode.namedChildren.indexOf(valueNode) + 1);
           return {
             node: caseNode,
             value: caseValue,
             label: nextLabel(`CASE_${caseValue.replace(/\W+/g, "_")}_`),
-            bodyStart: 1
+            bodyStart
           };
-        }),
-        ...findDescendants(node, "default_statement").map((caseNode) => ({
-          node: caseNode,
-          value: "default",
-          label: defaultLabel,
-          bodyStart: 0
-        }))
-      ];
+        });
 
       for (const item of cases.filter((caseItem) => caseItem.value !== "default")) {
         out.push(`if ${switchTemp} == ${item.value} goto ${item.label}`);
@@ -377,43 +403,6 @@ function generateTac(root, code) {
 
   visit(root);
   return dedupeAdjacent(out.length ? out : ["// No TAC generated for the analyzed subset."]);
-}
-
-function optimizeTac(lines) {
-  const before = [...lines];
-  const folded = before.map((line) => {
-    const match = line.match(/^(\w+)\s*=\s*(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)$/);
-    if (!match) return line;
-    const [, target, leftRaw, op, rightRaw] = match;
-    const left = Number(leftRaw);
-    const right = Number(rightRaw);
-    const value = op === "+" ? left + right : op === "-" ? left - right : op === "*" ? left * right : right === 0 ? NaN : left / right;
-    return Number.isFinite(value) ? `${target} = ${value}` : line;
-  });
-
-  const used = new Set();
-  for (const line of folded) {
-    for (const name of line.match(/\b[a-zA-Z_]\w*\b/g) ?? []) {
-      if (!/^(t\d+)$/.test(name)) used.add(name);
-    }
-    const rhs = line.split("=").slice(1).join("=");
-    for (const temp of rhs.match(/\bt\d+\b/g) ?? []) used.add(temp);
-  }
-
-  const after = folded.filter((line) => {
-    const tempAssign = line.match(/^(t\d+)\s*=/);
-    return !tempAssign || used.has(tempAssign[1]);
-  });
-
-  return {
-    before,
-    after,
-    changes: before.map((line, index) => ({
-      before: line,
-      after: after[index] ?? "",
-      changed: line !== (after[index] ?? "")
-    }))
-  };
 }
 
 function generateAssembly(lines) {
@@ -444,6 +433,13 @@ function generateAssembly(lines) {
     if (match) {
       if (match[1]) assembly.push(`MOV RAX, ${match[1]}`);
       assembly.push("RET");
+      continue;
+    }
+    match = line.match(/^(.+?)\s*=\s*call\s+([A-Za-z_]\w*)(?:,\s*(.*))?$/);
+    if (match) {
+      if (match[3]) assembly.push(`PUSH ${match[3]}`);
+      assembly.push(`CALL ${match[2]}`);
+      assembly.push(`MOV ${match[1]}, RAX`);
       continue;
     }
     match = line.match(/^(.+?)\s*=\s*(.+)$/);
@@ -499,6 +495,10 @@ function findDescendants(node, type, results = []) {
   if (node.type === type) results.push(node);
   for (const child of node.namedChildren) findDescendants(child, type, results);
   return results;
+}
+
+function isExpressionNode(node) {
+  return node?.type.includes("expression") || ["identifier", "number_literal", "string_literal", "char_literal", "true", "false"].includes(node?.type);
 }
 
 function isIdentifierUse(node) {
