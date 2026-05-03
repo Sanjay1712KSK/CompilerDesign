@@ -1,0 +1,24 @@
+{
+  "name": "c-compiler-visualizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack C compiler visualizer with Tree-sitter parsing.",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm --prefix client run dev",
+    "server": "npm --prefix server run dev",
+    "install:all": "npm install"
+  },
+  "keywords": [
+    "compiler",
+    "visualizer",
+    "tree-sitter",
+    "react",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT"
+}

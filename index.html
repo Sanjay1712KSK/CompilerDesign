@@ -1,103 +1,74 @@
-<!DOCTYPE html>
-<html>
-<head>
-<title>Compiler Visualizer</title>
-<style>
-body { font-family: Arial; background:#111; color:#eee; }
-textarea { width:100%; height:120px; }
-button { margin:5px; padding:10px; }
-.output { background:#222; padding:10px; margin-top:10px; }
-</style>
-</head>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>C Compiler Visualizer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #070a12;
+        color: #eef6ff;
+      }
 
-<body>
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 20% 15%, rgba(45, 212, 191, 0.18), transparent 34%),
+          radial-gradient(circle at 80% 10%, rgba(217, 70, 239, 0.14), transparent 32%),
+          linear-gradient(145deg, #070a12, #101827);
+      }
 
-<h2>Mini Compiler Visualizer</h2>
+      main {
+        width: min(680px, calc(100vw - 32px));
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 8px;
+        padding: 28px;
+        background: rgba(15, 23, 42, 0.72);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34), 0 0 34px rgba(45, 212, 191, 0.16);
+        backdrop-filter: blur(18px);
+      }
 
-<textarea id="code">
-int day = 4;
-switch(day) {
- case 1: printf("Sunday"); break;
- case 4: printf("Wednesday"); break;
-}
-</textarea>
+      h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+      }
 
-<br>
+      p {
+        margin: 0 0 18px;
+        color: #94a3b8;
+        line-height: 1.6;
+      }
 
-<button onclick="lexical()">Lexical Analysis</button>
-<button onclick="syntax()">Syntax Analysis</button>
-<button onclick="semantic()">Semantic Analysis</button>
-<button onclick="icg()">Intermediate Code</button>
-<button onclick="optimize()">Optimization</button>
-<button onclick="target()">Target Code</button>
+      code {
+        display: block;
+        margin: 10px 0;
+        padding: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 6px;
+        background: rgba(2, 6, 23, 0.82);
+        color: #67e8f9;
+        white-space: pre-wrap;
+      }
 
-<div class="output" id="output"></div>
-
-<script>
-
-function lexical() {
-    let out = `
-int → KEYWORD
-day → IDENTIFIER
-= → OPERATOR
-4 → NUMBER
-switch → KEYWORD
-`;
-    document.getElementById("output").innerText = out;
-}
-
-function syntax() {
-    let out = `
-Program
- └── Declaration: int day = 4
- └── Switch(day)
-      ├── Case 1
-      └── Case 4
-`;
-    document.getElementById("output").innerText = out;
-}
-
-function semantic() {
-    let out = `
-✔ Variable 'day' declared
-✔ Type checking passed
-✔ Switch cases valid
-No semantic errors
-`;
-    document.getElementById("output").innerText = out;
-}
-
-function icg() {
-    let out = `
-t1 = day
-if t1 == 1 goto L1
-if t1 == 4 goto L4
-goto Ldefault
-
-L4: print "Wednesday"
-`;
-    document.getElementById("output").innerText = out;
-}
-
-function optimize() {
-    let out = `
-Optimized:
-Direct jump to matching case
-Removed redundant checks
-`;
-    document.getElementById("output").innerText = out;
-}
-
-function target() {
-    let out = `
-MOV R1, 4
-CMP R1, 4
-JE PRINT_WEDNESDAY
-`;
-    document.getElementById("output").innerText = out;
-}
-
-</script>
-
-</body>
+      a {
+        color: #a5f3fc;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>C Compiler Visualizer</h1>
+      <p>This project is a Vite + React app. If you opened this file directly, start the dev servers first.</p>
+      <code>npm install
+npm run server</code>
+      <p>Then open a second terminal:</p>
+      <code>npm run dev</code>
+      <p>Open <a href="http://localhost:5173">http://localhost:5173</a>.</p>
+    </main>
+  </body>
 </html>
