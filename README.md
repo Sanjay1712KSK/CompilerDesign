@@ -1,4 +1,4 @@
-# C Compiler Visualizer
+# Visualization of Six Phases of Compiler Design 
 
 A full-stack compiler phase visualizer for C programs. The app lets you paste or load sample C code, run it through an educational compilation pipeline, and inspect each stage from lexical analysis through pseudo assembly generation.
 
