@@ -1,18 +1,39 @@
 # C Compiler Visualizer
 
-A full-stack compiler phase visualizer for C code. The backend uses `tree-sitter-c` for real parsing, then derives lexical tokens, AST output, semantic diagnostics, three-address code, basic optimizations, and x86-like pseudo assembly. The frontend is a dark glassmorphism React app with Monaco Editor, Tailwind CSS, and Framer Motion transitions.
+A full-stack compiler phase visualizer for C programs. The app lets you paste or load sample C code, run it through an educational compilation pipeline, and inspect each stage from lexical analysis through pseudo assembly generation.
+
+Live app: `https://phases-beta.vercel.app`  
+Repository: `https://github.com/Sanjay1712KSK/Visualization-of-6-Phases-of-Compiler`
+
+## What It Shows
+
+- Lexical analysis with token type, lexeme, line, and column
+- Syntax analysis with a readable Tree-sitter AST
+- Semantic diagnostics with symbol table output
+- Intermediate code generation in three-address code form
+- Optimization output with before/after comparison
+- Target code generation as x86-like pseudo assembly
+- PDF report export for the generated compilation result
+
+## Tech Stack
+
+- Frontend: React, Vite, Tailwind CSS, Framer Motion, Monaco Editor
+- Backend: Express, Tree-sitter, Tree-sitter C grammar
+- Deployment: Vercel
 
 ## Project Structure
 
 ```text
 .
-|-- client/          # React + Vite + Tailwind + Framer Motion UI
-|-- server/          # Express API and compiler pipeline
-|-- package.json     # Convenience scripts
+|-- api/             # Vercel serverless API routes
+|-- client/          # React + Vite frontend
+|-- server/          # Compiler pipeline and local Express API
+|-- vercel.json      # Vercel build and routing config
+|-- package.json     # Workspace-level scripts
 `-- README.md
 ```
 
-## Setup
+## Local Development
 
 Install dependencies:
 
@@ -26,44 +47,56 @@ Run the backend:
 npm run server
 ```
 
-Run the frontend in another terminal:
+Run the frontend in a second terminal:
 
 ```bash
 npm run dev
 ```
 
-Open the Vite URL, usually `http://localhost:5173`.
+Local URLs:
 
-## Vercel Deployment
+- Frontend: `http://127.0.0.1:5173`
+- Backend health check: `http://127.0.0.1:4000/health`
+- Compile endpoint: `POST http://127.0.0.1:4000/compile`
 
-This repo can be deployed to a single Vercel project from the `phases` folder:
+Build the frontend:
 
-1. Import the repository into Vercel.
-2. Set the project root to `phases`.
-3. Leave the framework as Vite.
-4. Vercel will build the frontend from `client/` and expose serverless API routes from `api/`.
+```bash
+npm run build
+```
 
-Environment variables:
+## Deployment
+
+This project is configured to deploy from the `phases` folder as a single Vercel project.
+
+- The frontend is built from `client/`
+- The API is exposed through `api/`
+- Production frontend requests default to `/api`
+
+Useful deployed routes:
+
+- App: `https://phases-beta.vercel.app`
+- Health check: `https://phases-beta.vercel.app/api/health`
+- Compile endpoint: `POST https://phases-beta.vercel.app/api/compile`
+
+### Environment Variables
 
 - `VITE_API_URL`
 
-Recommended values:
+Recommended usage:
 
-- Local development: leave it unset. The app defaults to `http://127.0.0.1:4000`.
-- Vercel: leave it unset if frontend and API are deployed together in the same Vercel project. The app defaults to `/api`.
-- Separate frontend/backend deployment: set `VITE_API_URL` to your deployed API base URL, for example `https://your-app.vercel.app/api`.
+- Local development: leave it unset to use `http://127.0.0.1:4000`
+- Same-project Vercel deploy: leave it unset to use `/api`
+- Separate API deployment: set it to your deployed API base URL
 
-Useful routes after deployment:
-
-- Frontend: `/`
-- Health check: `/api/health`
-- Compiler endpoint: `POST /api/compile`
-
-## API
-
-`POST http://localhost:4000/compile`
+## API Example
 
 Request:
+
+```http
+POST /api/compile
+Content-Type: application/json
+```
 
 ```json
 {
@@ -73,13 +106,16 @@ Request:
 
 Response includes:
 
-- `lexical.tokens`: token table with type, value, line, and column
-- `syntax.tree`: readable Tree-sitter AST
-- `semantic.messages`: semantic errors, warnings, and success messages
-- `icg.code`: three-address code
-- `optimization.before` and `optimization.after`: optimization comparison
-- `target.code`: pseudo assembly using instructions like `MOV`, `CMP`, `JMP`, and `LABEL`
+- `lexical.tokens`
+- `syntax.tree`
+- `semantic.messages`
+- `semantic.symbols`
+- `icg.code`
+- `optimization.before`
+- `optimization.after`
+- `optimization.events`
+- `target.code`
 
 ## Notes
 
-The semantic analyzer and code generation are intentionally educational subsets. Tree-sitter provides accurate C parsing, while semantic checks and TAC generation currently focus on common declarations, assignments, expressions, `if`, `switch`, calls, and returns.
+This project is designed for compiler-learning and visualization purposes. Tree-sitter provides real parsing, while the semantic analysis, TAC generation, optimization, and target code output intentionally focus on a practical educational subset of C.

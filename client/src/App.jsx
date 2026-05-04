@@ -9,6 +9,7 @@ import {
   Cpu,
   Download,
   FileCode2,
+  Github,
   Layers3,
   Play,
   Sparkles,
@@ -149,6 +150,16 @@ export default function App() {
             >
               <Download className="h-4 w-4" />
             </button>
+            <a
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-600/70 bg-slate-900/70 px-4 text-sm font-medium text-slate-200 transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:text-white"
+              href="https://github.com/Sanjay1712KSK/Visualization-of-6-Phases-of-Compiler"
+              target="_blank"
+              rel="noreferrer"
+              title="Open GitHub repository"
+            >
+              <Github className="h-4 w-4" />
+              GitHub
+            </a>
           </div>
         </header>
 
