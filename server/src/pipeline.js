@@ -1,6 +1,7 @@
 import Parser from "tree-sitter";
 import C from "tree-sitter-c";
 import { optimizeTac } from "./optimizer.js";
+import { generateTacFromAst } from "./tac.js";
 
 const parser = new Parser();
 parser.setLanguage(C);
@@ -71,8 +72,12 @@ export function compileC(code) {
   const ast = toReadableTree(tree.rootNode, code);
   const tokens = tokenize(code);
   const semantic = analyzeSemantics(tree.rootNode, code);
-  const tacBefore = generateTac(tree.rootNode, code);
-  const optimized = optimizeTac(tacBefore);
+  const icgResult = generateTacFromAst(tree.rootNode, code, {
+    extractDeclarationType,
+    findIdentifier,
+    childByType
+  });
+  const optimized = optimizeTac(icgResult.tac);
   const assembly = generateAssembly(optimized.after);
 
   return {
@@ -84,7 +89,7 @@ export function compileC(code) {
       json: ast
     },
     semantic,
-    icg: { code: tacBefore },
+    icg: { code: icgResult.tac, tac: icgResult.tac },
     optimization: optimized,
     target: { code: assembly }
   };
@@ -266,145 +271,6 @@ function analyzeSemantics(root, code) {
   };
 }
 
-function generateTac(root, code) {
-  const out = [];
-  let temp = 0;
-  let label = 0;
-  const nextTemp = () => `t${++temp}`;
-  const nextLabel = (prefix = "L") => `${prefix}${++label}`;
-
-  const emitExpression = (node) => {
-    if (!node) return "";
-    if (["identifier", "number_literal", "string_literal", "char_literal"].includes(node.type)) return nodeText(node, code);
-    if (node.type === "parenthesized_expression") return emitExpression(node.namedChild(0));
-    if (node.type === "binary_expression") {
-      const left = emitExpression(node.childForFieldName?.("left") ?? node.namedChild(0));
-      const right = emitExpression(node.childForFieldName?.("right") ?? node.namedChild(1));
-      const op = operatorFromText(nodeText(node, code));
-      const target = nextTemp();
-      out.push(`${target} = ${left} ${op} ${right}`);
-      return target;
-    }
-    if (node.type === "call_expression") {
-      const fn = nodeText(node.childForFieldName?.("function") ?? node.namedChild(0), code);
-      const args = childByType(node, "argument_list")?.namedChildren.map((arg) => emitExpression(arg)).join(", ") ?? "";
-      const target = nextTemp();
-      out.push(`${target} = call ${fn}, ${args}`);
-      return target;
-    }
-    return nodeText(node, code);
-  };
-
-  const visit = (node) => {
-    if (node.type === "declaration") {
-      for (const declarator of collectDeclarators(node)) {
-        const nameNode = findIdentifier(declarator);
-        if (!nameNode) continue;
-        const text = nodeText(declarator, code);
-        if (text.includes("=")) {
-          const rhs = declarator.namedChildren.find((child) => child !== nameNode && child.startIndex > nameNode.endIndex);
-          const value = rhs ? emitExpression(rhs) : text.split("=").slice(1).join("=").trim();
-          out.push(`${nodeText(nameNode, code)} = ${value}`);
-        }
-      }
-    }
-
-    if (node.type === "assignment_expression") {
-      const left = node.childForFieldName?.("left") ?? node.namedChild(0);
-      const right = node.childForFieldName?.("right") ?? node.namedChild(1);
-      out.push(`${nodeText(left, code)} = ${emitExpression(right)}`);
-      return;
-    }
-
-    if (node.type === "expression_statement") {
-      const expression = node.namedChild(0);
-      if (expression?.type === "call_expression") {
-        emitExpression(expression);
-        return;
-      }
-    }
-
-    if (node.type === "if_statement") {
-      const condition = node.childForFieldName?.("condition") ?? childByType(node, "parenthesized_expression");
-      const consequence = node.childForFieldName?.("consequence");
-      const alternative = node.childForFieldName?.("alternative");
-      const elseLabel = nextLabel("ELSE");
-      const endLabel = nextLabel("ENDIF");
-      out.push(`ifFalse ${emitExpression(condition?.namedChild(0) ?? condition)} goto ${elseLabel}`);
-      if (consequence) visit(consequence);
-      out.push(`goto ${endLabel}`);
-      out.push(`${elseLabel}:`);
-      if (alternative) visit(alternative);
-      out.push(`${endLabel}:`);
-      return;
-    }
-
-    if (node.type === "while_statement") {
-      const condition = node.childForFieldName?.("condition") ?? childByType(node, "parenthesized_expression");
-      const body = node.childForFieldName?.("body");
-      const startLabel = nextLabel("WHILE");
-      const endLabel = nextLabel("ENDWHILE");
-      out.push(`${startLabel}:`);
-      out.push(`ifFalse ${emitExpression(condition?.namedChild(0) ?? condition)} goto ${endLabel}`);
-      if (body) visit(body);
-      out.push(`goto ${startLabel}`);
-      out.push(`${endLabel}:`);
-      return;
-    }
-
-    if (node.type === "switch_statement") {
-      const condition = node.childForFieldName?.("condition") ?? childByType(node, "parenthesized_expression");
-      const switchTemp = emitExpression(condition?.namedChild(0) ?? condition);
-      const endLabel = nextLabel("ENDSW");
-      const defaultLabel = nextLabel("DEFAULT");
-      const cases = findDescendants(node, "case_statement").flatMap((caseNode) => {
-          if (nodeText(caseNode, code).trim().startsWith("default")) {
-            return {
-              node: caseNode,
-              value: "default",
-              label: defaultLabel,
-              bodyStart: 0
-            };
-          }
-          const valueNode = caseNode.childForFieldName?.("value") ?? caseNode.namedChildren.find((child) => isExpressionNode(child));
-          if (!valueNode) return [];
-          const caseValue = nodeText(valueNode, code);
-          const bodyStart = Math.max(1, caseNode.namedChildren.indexOf(valueNode) + 1);
-          return {
-            node: caseNode,
-            value: caseValue,
-            label: nextLabel(`CASE_${caseValue.replace(/\W+/g, "_")}_`),
-            bodyStart
-          };
-        });
-
-      for (const item of cases.filter((caseItem) => caseItem.value !== "default")) {
-        out.push(`if ${switchTemp} == ${item.value} goto ${item.label}`);
-      }
-      out.push(`goto ${cases.some((item) => item.value === "default") ? defaultLabel : endLabel}`);
-
-      for (const item of cases) {
-        out.push(`${item.label}:`);
-        for (let i = item.bodyStart; i < item.node.namedChildCount; i += 1) {
-          const child = item.node.namedChild(i);
-          if (child?.type !== "break_statement") visit(child);
-        }
-      }
-      out.push(`${endLabel}:`);
-      return;
-    }
-
-    if (node.type === "return_statement") {
-      out.push(`return ${node.namedChild(0) ? emitExpression(node.namedChild(0)) : ""}`.trim());
-    }
-
-    for (const child of node.namedChildren) visit(child);
-  };
-
-  visit(root);
-  return dedupeAdjacent(out.length ? out : ["// No TAC generated for the analyzed subset."]);
-}
-
 function generateAssembly(lines) {
   const assembly = [];
   for (const line of lines) {
@@ -412,7 +278,22 @@ function generateAssembly(lines) {
       assembly.push(`LABEL ${line.slice(0, -1)}`);
       continue;
     }
-    let match = line.match(/^ifFalse\s+(.+)\s+goto\s+(\w+)$/);
+    let match = line.match(/^func\s+([A-Za-z_]\w*)$/);
+    if (match) {
+      assembly.push(`FUNC ${match[1]}`);
+      continue;
+    }
+    match = line.match(/^declare\s+(.+)$/);
+    if (match) {
+      assembly.push(`DECL ${match[1]}`);
+      continue;
+    }
+    match = line.match(/^param\s+(.+)$/);
+    if (match) {
+      assembly.push(`PUSH ${match[1]}`);
+      continue;
+    }
+    match = line.match(/^ifFalse\s+(.+)\s+goto\s+(\w+)$/);
     if (match) {
       assembly.push(`CMP ${match[1]}, 0`);
       assembly.push(`JE ${match[2]}`);
@@ -437,14 +318,22 @@ function generateAssembly(lines) {
     }
     match = line.match(/^(.+?)\s*=\s*call\s+([A-Za-z_]\w*)(?:,\s*(.*))?$/);
     if (match) {
-      if (match[3]) assembly.push(`PUSH ${match[3]}`);
       assembly.push(`CALL ${match[2]}`);
       assembly.push(`MOV ${match[1]}, RAX`);
       continue;
     }
+    match = line.match(/^call\s+([A-Za-z_]\w*)(?:,\s*(.*))?$/);
+    if (match) {
+      assembly.push(`CALL ${match[1]}`);
+      continue;
+    }
     match = line.match(/^(.+?)\s*=\s*(.+)$/);
     if (match) {
-      assembly.push(`MOV ${match[1]}, ${match[2]}`);
+      if (match[1].includes("[") && match[1].includes("]")) {
+        assembly.push(`STORE ${match[1]}, ${match[2]}`);
+      } else {
+        assembly.push(`MOV ${match[1]}, ${match[2]}`);
+      }
       continue;
     }
     assembly.push(`; ${line}`);
@@ -551,10 +440,3 @@ function typesCompatible(left, right) {
   return false;
 }
 
-function operatorFromText(text) {
-  return text.match(/==|!=|<=|>=|&&|\|\||[+\-*/%<>]/)?.[0] ?? "?";
-}
-
-function dedupeAdjacent(lines) {
-  return lines.filter((line, index) => index === 0 || line !== lines[index - 1]);
-}

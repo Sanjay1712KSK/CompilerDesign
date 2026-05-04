@@ -26,7 +26,11 @@ export class Instruction {
     if (this.op === "ifFalse") return `ifFalse ${this.arg1} goto ${this.target}`;
     if (this.op === "binary") return `${this.result} = ${this.arg1} ${this.relop} ${this.arg2}`;
     if (this.op === "assign") return `${this.result} = ${this.arg1}`;
+    if (this.op === "declare") return `declare ${this.arg1}`;
+    if (this.op === "param") return `param ${this.arg1}`;
     if (this.op === "call") return `${this.result} = call ${this.arg1}${this.arg2 ? `, ${this.arg2}` : ""}`;
+    if (this.op === "call_void") return `call ${this.arg1}${this.arg2 ? `, ${this.arg2}` : ""}`;
+    if (this.op === "func") return `func ${this.arg1}`;
     if (this.op === "return") return this.arg1 ? `return ${this.arg1}` : "return";
     return this.raw;
   }
@@ -95,16 +99,28 @@ export function parseTac(lines) {
     match = trimmed.match(/^return(?:\s+(.+))?$/);
     if (match) return withIndex(new Instruction({ op: "return", arg1: match[1]?.trim() ?? null, raw: trimmed }), index);
 
+    match = trimmed.match(/^func\s+([A-Za-z_]\w*)$/);
+    if (match) return withIndex(new Instruction({ op: "func", arg1: match[1], raw: trimmed }), index);
+
+    match = trimmed.match(/^declare\s+(.+)$/);
+    if (match) return withIndex(new Instruction({ op: "declare", arg1: match[1].trim(), raw: trimmed }), index);
+
+    match = trimmed.match(/^param\s+(.+)$/);
+    if (match) return withIndex(new Instruction({ op: "param", arg1: match[1].trim(), raw: trimmed }), index);
+
     match = trimmed.match(/^([A-Za-z_]\w*)\s*=\s*call\s+([A-Za-z_]\w*)(?:,\s*(.*))?$/);
     if (match) return withIndex(new Instruction({ op: "call", result: match[1], arg1: match[2], arg2: match[3]?.trim() ?? "", raw: trimmed }), index);
+
+    match = trimmed.match(/^call\s+([A-Za-z_]\w*)(?:,\s*(.*))?$/);
+    if (match) return withIndex(new Instruction({ op: "call_void", arg1: match[1], arg2: match[2]?.trim() ?? "", raw: trimmed }), index);
 
     match = trimmed.match(/^([A-Za-z_]\w*)\s*=\s*(.+?)\s*(==|!=|<=|>=|&&|\|\||[+\-*/%<>])\s*(.+)$/);
     if (match && binaryOps.has(match[3])) {
       return withIndex(new Instruction({ op: "binary", result: match[1], arg1: match[2].trim(), relop: match[3], arg2: match[4].trim(), raw: trimmed }), index);
     }
 
-    match = trimmed.match(/^([A-Za-z_]\w*)\s*=\s*(.+)$/);
-    if (match) return withIndex(new Instruction({ op: "assign", result: match[1], arg1: match[2].trim(), raw: trimmed }), index);
+    match = trimmed.match(/^(.+?)\s*=\s*(.+)$/);
+    if (match) return withIndex(new Instruction({ op: "assign", result: match[1].trim(), arg1: match[2].trim(), raw: trimmed }), index);
 
     return withIndex(new Instruction({ op: "raw", raw: trimmed }), index);
   });
@@ -120,6 +136,7 @@ export function buildCFG(instructions) {
 
   instructions.forEach((instruction, index) => {
     if (instruction.op === "label") leaders.add(index);
+    if (instruction.op === "func") leaders.add(index);
     if (["goto", "if", "ifFalse"].includes(instruction.op)) {
       const targetIndex = labelToIndex.get(instruction.target);
       if (targetIndex !== undefined) leaders.add(targetIndex);
@@ -316,7 +333,9 @@ function unreachableCodeElimination(instructions, events) {
   const cfg = buildCFG(instructions);
   if (!cfg.blocks.length) return instructions;
   const reachable = new Set();
-  const stack = [cfg.blocks[0].id];
+  const stack = cfg.blocks
+    .filter((block, index) => index === 0 || block.instructions[0]?.op === "func")
+    .map((block) => block.id);
 
   while (stack.length) {
     const id = stack.pop();
@@ -363,6 +382,7 @@ function controlFlowSimplification(instructions, events) {
     if (instruction.op !== "label") return true;
     if (index === 0) return true;
     if (targetedLabels.has(instruction.label)) return true;
+    if (next[index - 1]?.op === "func") return true;
     events.push(event("control-flow-simplification", instruction, "<removed>", "Removed empty unreferenced label."));
     return false;
   });
@@ -464,12 +484,12 @@ function mergeConstantMaps(maps) {
 
 function uses(instruction) {
   const used = [];
-  if (["assign", "ifFalse", "return"].includes(instruction.op)) used.push(...variablesIn(instruction.arg1));
+  if (["assign", "ifFalse", "return", "param"].includes(instruction.op)) used.push(...variablesIn(instruction.arg1));
   if (["binary", "if"].includes(instruction.op)) {
     used.push(...variablesIn(instruction.arg1));
     used.push(...variablesIn(instruction.arg2));
   }
-  if (instruction.op === "call") used.push(...variablesIn(instruction.arg2));
+  if (["call", "call_void"].includes(instruction.op)) used.push(...variablesIn(instruction.arg2));
   return [...new Set(used)];
 }
 
@@ -482,7 +502,7 @@ function isPureAssignment(instruction) {
 }
 
 function hasSideEffects(instruction) {
-  if (instruction.op === "call") return true;
+  if (["call", "call_void", "param", "declare", "func"].includes(instruction.op)) return true;
   if (instruction.op === "raw") return true;
   if (["assign", "binary"].includes(instruction.op) && !isVariable(instruction.result)) return true;
   return false;
