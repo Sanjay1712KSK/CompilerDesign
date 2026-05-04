@@ -52,8 +52,15 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code })
       });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error ?? "Compilation failed.");
+      const raw = await response.text();
+      const payload = raw ? safeJsonParse(raw) : null;
+      if (!response.ok) {
+        const message = payload?.error ?? payload?.detail ?? raw.trim() ?? "Compilation failed.";
+        throw new Error(message);
+      }
+      if (!payload) {
+        throw new Error("Compilation succeeded but returned an empty response.");
+      }
       setResult(payload);
 
       if (animateAll) {
@@ -461,4 +468,12 @@ function PanelTitle({ title, subtitle, compact = false }) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }

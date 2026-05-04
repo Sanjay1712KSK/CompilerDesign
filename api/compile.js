@@ -1,6 +1,4 @@
-import { compileC } from "../server/src/pipeline.js";
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -14,7 +12,9 @@ export default function handler(req, res) {
   }
 
   try {
-    const code = typeof req.body?.code === "string" ? req.body.code : "";
+    const { compileC } = await import("../server/src/pipeline.js");
+    const body = typeof req.body === "string" ? safeJsonParse(req.body) : req.body;
+    const code = typeof body?.code === "string" ? body.code : "";
     if (!code.trim()) {
       return res.status(400).json({ error: "The request body must include non-empty C source in `code`." });
     }
@@ -26,5 +26,13 @@ export default function handler(req, res) {
       error: "Compilation pipeline failed.",
       detail: error instanceof Error ? error.message : String(error)
     });
+  }
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
 }

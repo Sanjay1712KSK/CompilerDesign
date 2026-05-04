@@ -2,6 +2,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "client/dist",
   "framework": "vite",
+  "functions": {
+    "api/compile.js": {
+      "includeFiles": "node_modules/tree-sitter*/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
