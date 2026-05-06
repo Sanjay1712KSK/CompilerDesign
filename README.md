@@ -1,5 +1,5 @@
 # Visualization of Six Phases of Compiler Design 
-# C Compiler Visualizer 🚀
+## C Compiler Visualizer 🚀
 
 A modern, interactive **Compiler Design Visualization Tool** that demonstrates all **6 phases of a compiler** using dynamic analysis of C programs.
 
